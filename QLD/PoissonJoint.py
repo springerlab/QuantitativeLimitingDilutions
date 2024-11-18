@@ -3,7 +3,8 @@ Author: Amogh Jalihal
 Date: 2024-11-18
 """
 from scipy.optimize import minimize
-
+from itertools import product
+import numpy as np
 def PoissonJoint(x, plate, fold):
     """
     Takes a number of "cells" x and a "plate" (pandas DataFrame)  with rows as replicates
@@ -53,7 +54,7 @@ def quantifyInputFromSerialDilution(serialDilutionTable, foldDilution=10, initia
     quantifyInput maximizes the Joint Possion likelihood to estimate the number of targets that can produce
     the data above.
     """
-    sol = minimize(PoissonJoint, initialGuess, method="Nelder-Mead",args=(plate, foldDilution))
+    sol = minimize(PoissonJoint, initialGuess, method="Nelder-Mead",args=(serialDilutionTable, foldDilution))
     return(sol)
     
     
