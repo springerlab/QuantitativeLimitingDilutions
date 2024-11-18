@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 from itertools import product
 from collections import defaultdict
 from scipy.integrate import quad
-from PoissonJoint import PoissonJoint
+from QLD.PoissonJoint import PoissonJoint
 
 
 """

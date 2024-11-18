@@ -3,6 +3,7 @@ Author: Amogh Jalihal
 Date: 2024-11-18
 """
 from scipy.optimize import minimize
+
 def PoissonJoint(x, plate, fold):
     """
     Takes a number of "cells" x and a "plate" (pandas DataFrame)  with rows as replicates
