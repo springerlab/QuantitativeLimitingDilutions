@@ -14,18 +14,6 @@ def PoissonJoint(x, plate, fold):
     rowterm = 1
     denominator = 0
 
-    ## Iterate over all possible states of growth and no growth for the number of dilutions 
-    ## which correspond to the number of columns of the plate.
-    
-    for seq in product(["growth","nogrowth"], repeat=plate.shape[1]):
-        _denom = 1
-        for i, term in enumerate(seq):
-            if term == "growth":
-                _denomn = _denom*(1 - np.exp(-x/np.power(fold, i)))
-            else:
-                _denom = _denom*( np.exp(-x/np.power(fold, i)))
-        denominator += _denom
-
     ## Construct the joint probability
     for _, row in plate.iterrows():
         numerator = 1
@@ -34,11 +22,13 @@ def PoissonJoint(x, plate, fold):
                 numerator = numerator*(np.exp(-x/np.power(fold,i)))
             else:
                 numerator = numerator*(1-np.exp(-x/np.power(fold, i)))
-        rowterm = rowterm*(numerator/denominator) 
+        rowterm = rowterm*(numerator) #/denominator) 
     return(-np.log(rowterm))
 
 
-def quantifyInputFromSerialDilution(serialDilutionTable, foldDilution=10, initialGuess=1.0):
+def quantifyInputFromSerialDilution(serialDilutionTable, foldDilution=10, 
+                                    initialGuess=1.0,
+                                    maxCellRange=30000):
     """
     Takes as input a Serial Dilution Table, a pandas dataframe with
     each row as a replicate, each column as a serial dilution, and values (0,1) indicating 
@@ -55,6 +45,34 @@ def quantifyInputFromSerialDilution(serialDilutionTable, foldDilution=10, initia
     the data above.
     """
     sol = minimize(PoissonJoint, initialGuess, method="Nelder-Mead",args=(serialDilutionTable, foldDilution))
-    return(sol)
+    lower = np.nan
+    upper = np.nan
+    if sol.success:
+        X = np.linspace(1,maxCellRange,maxCellRange)
+        Y = np.exp(-PoissonJoint(X, serialDilutionTable, fold=foldDilution))
+        total_area = sum(Y)
+        lower, upper, area = get_ci(sol.x[0], max(Y), X, Y, serialDilutionTable, 
+               total_area, fold=foldDilution)
+    return(sol, lower, upper)
     
-    
+def get_ci(xmax, pmax, X, Y, plate, total_area, fold):
+    """
+    Estimate 95% Confidence Interval bounds for the full probability distribution.
+    xmax : estimated count from maximum likeihood estimation
+    pmax : likelihood of xmax
+    X : list of range of counts over which to estimate the 95%CI. 
+    Y : list of liklihoods associated with X.
+    total_area : Area under the distribution over X
+    fold : fold dilution
+    """
+    area_within_lim = 0
+    xlow, xhigh = xmax, xmax
+    currentp = pmax
+    while area_within_lim < 0.95*total_area:
+        currentp = 0.95*currentp
+        scanidx = [idx for idx, (x,y) in enumerate(zip(X,Y))\
+                   if abs(y - currentp) < np.power(10., -int(-np.log10(pmax))-3)]
+        lowidx, highidx = scanidx[0], scanidx[-1]
+        area_within_lim  = sum([Y[i] for i in range(lowidx, highidx)])
+    ax.plot([X[lowidx],X[highidx]], [Y[lowidx],Y[highidx]],color="C0")
+    return(X[lowidx], X[highidx], area_within_lim)
