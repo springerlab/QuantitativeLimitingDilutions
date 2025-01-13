@@ -16,6 +16,22 @@ Poisson(>0 events | x) = 1- e^(-x)
 If we are performing an `f` fold serial dilution, the process can be represented as 
 product_i=1^(i=k) (Poisson(growth observed well | x/f^k ) for `k` serial dilutions.
 
+
+We construct the Log Likelihood function as follows
+\[L = \prod_{r=1}^{r=R} \prod_{d=1}^{d=D} (1 - e^{-x/F^d})^{v_{rd}} (e^{-x/F^d})^{1-v_{rd}}\]
+
+We find the number of cells x that maximizes the Log Likelihood.
+
+Further, using the Cramer-Rao bound, we estimate the variance at the MLE to be 
+
+\[\text{Variance} = \frac{-1}{\frac{\partial^2 \ln L}{\partial x^2}\]
+
+where
+
+\[\frac{\partial^2 \ln L}{\partial x^2} = \sum_{r=1}^{r=R} \sum_{d=1}^{d=D}- \frac{F^{- 2 d} v_{rd} e^{- F^{- d} x}}{1 - e^{- F^{- d} x}} - \frac{F^{- 2 d} v_{rd} e^{- 2 F^{- d} x}}{\left(1 - e^{- F^{- d} x}\right)^{2}}\]
+
+Finally, we compute the 95% CI as MLE $\pm$ 1.96 $\sqrt \sigma$ 
+
 ## Usage
 
 See `./test.py`
