@@ -82,8 +82,11 @@ def quantifyInputFromSerialDilution(serialDilutionTable, foldDilution=10,
     MLE = 0
     if sol.success:
         MLE = sol.x[0]
-
-        variance = -1/PoissonJointSecondDerivative(MLE, serialDilutionTable, foldDilution)
+        try:
+            variance = -1/PoissonJointSecondDerivative(MLE, serialDilutionTable, foldDilution)
+            
+        except:
+            variance = np.nan
         lower, upper = MLE - 1.96*np.sqrt(variance), MLE + 1.96*np.sqrt(variance)
         # lower, upper, area, ci_success = get_ci(sol.x[0], max(Y), X, Y, serialDilutionTable, 
         #        total_area, fold=foldDilution, ax=ax)
