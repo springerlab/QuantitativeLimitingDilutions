@@ -21,9 +21,9 @@ def PoissonJoint(x, plate, fold):
         for dilution, growth in enumerate(replicate.values):
             if growth == 0:
                 v_rd = 0
+                term = - (x/np.power(fold, dilution))
             else:
-                v_rd = 1
-            term = v_rd * np.log(1 - np.exp(-x/np.power(fold, dilution))) - (1-v_rd)*(x/np.power(fold, dilution))
+                term =  np.log(1 - np.exp(-x/np.power(fold, dilution))) 
             loglikelihood = loglikelihood + (term)
     return(-loglikelihood)
 
@@ -103,7 +103,7 @@ def quantifyInputFromSerialDilution(serialDilutionTable, foldDilution=10,
                 ax.set_title(f"Estimate={round(sol.x[0])},95%CI=[{round(lower)}, {round(upper)}]")
         plt.show()
 
-    return(MLE, lower, upper)
+    return(MLE, lower, upper, variance)
 
 def get_ci_numerical(xmax, pmax, X, Y, plate, total_area, fold, maxiter=1000,ax=None):
     """
@@ -143,8 +143,8 @@ def simulate_plate(ideal_initial, rows,
     initial = ideal_initial
     plate = []
     for i in range(rows):
-        #initial = ideal_initial
-        initial = int(ideal_initial*(1 + 1./(fold-1)))
+        initial = ideal_initial
+        #initial = int(ideal_initial*(1 + 1./(fold-1)))
         # initial = ideal_initial
         row = [initial]
         ## do noisy serial dilutions
