@@ -12,7 +12,7 @@ def PoissonJoint(x, plate, fold):
     """
     Takes a number of "cells" x and a "plate" (pandas DataFrame)  with rows as replicates
     and columns as serial dilutions.
-    Returns the likelihood of the number of cells explaining the observed data.
+    Returns the negative log likelihood of the number of cells explaining the observed data.
     """
     loglikelihood = 0
     ## Construct the joint probability
