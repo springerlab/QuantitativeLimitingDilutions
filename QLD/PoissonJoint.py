@@ -5,7 +5,7 @@ Date: 2024-11-18
 from scipy.optimize import minimize
 from itertools import product
 import numpy as np
-import matplotlib.pyplot as plt 
+#import matplotlib.pyplot as plt 
 from numpy.random import binomial
 import pandas as pd
 def PoissonJoint(x, plate, fold):
@@ -79,6 +79,7 @@ def quantifyInputFromSerialDilution(serialDilutionTable, foldDilution=10,
 
     lower = np.nan
     upper = np.nan
+    variance = np.nan
     MLE = 0
     if sol.success:
         MLE = sol.x[0]
@@ -101,7 +102,7 @@ def quantifyInputFromSerialDilution(serialDilutionTable, foldDilution=10,
             ax.set_ylabel("Prob")
             if (not np.isnan(lower)) and ((not np.isnan(lower))):
                 ax.set_title(f"Estimate={round(sol.x[0])},95%CI=[{round(lower)}, {round(upper)}]")
-        plt.show()
+            plt.show()
 
     return(MLE, lower, upper, variance)
 
