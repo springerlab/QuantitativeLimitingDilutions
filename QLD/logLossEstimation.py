@@ -20,6 +20,7 @@ def viability_pipeline(viabilitydf : pd.DataFrame,
                        initial_viability : pd.DataFrame = None,
                        dilutioncolumn : str  ="dilution",
                        make_report : bool =False,
+                       backfill : bool = False, 
                        exppref : str ="experiment",
                        foldDilution: float=10.,
                        lower_ct_cutoff : float = 10.,
@@ -198,14 +199,15 @@ def viability_pipeline(viabilitydf : pd.DataFrame,
     ## Fill back in flase dropouts from previous step
     try:
         mle, lci, uci, var, filled = fill_dropouts_and_assess_viability(pruned, foldDilution, 
-                                                   debug=make_report,task=task,
-                                                   axes=axfill)
+                                                                        debug=make_report,task=task,
+                                                                        axes=axfill,
+                                                                        backfill=backfill)
         print(mle)
     except:
         print("ERROR: fill_dropouts_and_assess_viability() failed.")
         raise
     ### -- Adds columns = 'growth'
-    print(filled)
+    #print(filled)
     analysisdf = analysisdf.merge(filled, 
                                   on=list(set(analysisdf.columns)\
                                           .intersection(set(filled.columns))))
@@ -234,7 +236,7 @@ def calculate_dilutions_for_viab_estimation(mle, foldDilution):
     return((d1, d2))
 
 def fill_dropouts_and_assess_viability(df, foldDilution, debug = False, 
-                                       axes= None, task="initial"):
+                                       axes= None, task="initial", backfill=False):
     """
     If task is "assessment", we make a strong assumption that the dilution succeeding the last dilution has 
     _zero_ growth. This is necessary to estimate a lower bound on the viability. 
@@ -245,6 +247,7 @@ def fill_dropouts_and_assess_viability(df, foldDilution, debug = False,
     thresholdCT = df[df.is_valid_ct].CT.median() 
     df = df.assign(growth = 0.)
     df.loc[df.is_valid_ct, "growth"] = 1.
+    print(df.Virus.unique())
     ### HAndle initial viability experiments here.
     df = df[df.dilution > 0 ]
 
@@ -268,7 +271,6 @@ def fill_dropouts_and_assess_viability(df, foldDilution, debug = False,
         print(df.sort_values(by="group_rep"))
         raise
     
-    
     sp = df.Sp.unique()[0]
     growth = df.pivot(index="group_rep",columns="dilution", values="growth")
     ## Check if there is any growth at all:
@@ -277,52 +279,54 @@ def fill_dropouts_and_assess_viability(df, foldDilution, debug = False,
         sumgrowth += row.sum()
     if sumgrowth == 0 : 
         return(0,0,0,0,df)
-        
+    mle, lci ,uci , var = quantifyInputFromSerialDilution(growth, foldDilution=foldDilution)
+    if backfill:
+        mle_prefill, lci ,uci , var = quantifyInputFromSerialDilution(growth, foldDilution=foldDilution)
 
-    mle_prefill, lci ,uci , var = quantifyInputFromSerialDilution(growth, foldDilution=foldDilution)
-
-
-    ## Clean false positives: any singleton growth in a group with two preceding dilutions with no growth is a false positive
-    ## TODO
-    print("In fill_drop -- 1.2: ", df)
-    for dilution in range(df.dilution.max(),max(df.dilution.min(),1),-1) :
-        for g in df.repid.unique():
-            subdf = df[(df.dilution == dilution) & (df.repid == g)]
-            prevdf = df[(df.dilution == dilution-1) & (df.repid == g)]
-            prevprevdf = df[(df.dilution == dilution-2) & (df.repid == g)]
-            if prevdf.growth.sum() == 0:
-                if prevprevdf.growth.sum() == 0:
-                    df.loc[subdf.index, "growth"] = 0
-
-                 
-    ## Next, if there is growth till dilution d, fill everything until dilution d-2
-    countdf = df.groupby("dilution")\
-                .apply(lambda gdf: gdf.assign(gcount = gdf[gdf.growth > 0.].shape[0])[["gcount"]]\
-                       .drop_duplicates())\
-                .reset_index()
-
-    ## EXPERIMENTAL
-    ##  If an entire repid is completeley empty, remove these reps.
-    for ri in df.repid.unique():
-        hasgrowth = False
-        for i, row in df[df.repid == ri].iterrows():
-            if row.growth == 1:
-                hasgrowth = True
-                break
-        if not hasgrowth:
-            df = df[df.repid != ri]
-                
-    # For everything else, treat no growth as qPCR dropouts and back fill them.
-    maxgrowthdil = countdf[countdf.gcount > 1].dilution.max()
-    df.loc[df.dilution <= maxgrowthdil -1, "growth"] = 1
-    print("In fill_drop -- 1.5: ", df)
-
-    growthfilled = df.pivot(index="group_rep",columns="dilution", values="growth")
-    print("In fill_drop -- 2: ", growthfilled)
-    mle_postfill, lci ,uci , var = quantifyInputFromSerialDilution(growthfilled, foldDilution=10.15)
+        ## Clean false positives: any singleton growth in a group with two preceding dilutions with no growth is a false positive
+        ## TODO
+        # print("In fill_drop -- 1.2: ", df)
+        for dilution in range(df.dilution.max(),max(df.dilution.min(),1),-1) :
+            for g in df.repid.unique():
+                subdf = df[(df.dilution == dilution) & (df.repid == g)]
+                prevdf = df[(df.dilution == dilution-1) & (df.repid == g)]
+                prevprevdf = df[(df.dilution == dilution-2) & (df.repid == g)]
+                if prevdf.growth.sum() == 0:
+                    if prevprevdf.growth.sum() == 0:
+                        df.loc[subdf.index, "growth"] = 0
 
 
+        ## Next, if there is growth till dilution d, fill everything until dilution d-2
+        countdf = df.groupby("dilution")\
+                    .apply(lambda gdf: gdf.assign(gcount = gdf[gdf.growth > 0.].shape[0])[["gcount"]]\
+                           .drop_duplicates())\
+                    .reset_index()
+
+        ## EXPERIMENTAL
+        ##  If an entire repid is completeley empty, remove these reps.
+        for ri in df.repid.unique():
+            hasgrowth = False
+            for i, row in df[df.repid == ri].iterrows():
+                if row.growth == 1:
+                    hasgrowth = True
+                    break
+            if not hasgrowth:
+                df = df[df.repid != ri]
+
+        # For everything else, treat no growth as qPCR dropouts and back fill them.
+        maxgrowthdil = countdf[countdf.gcount > 1].dilution.max()
+        df.loc[df.dilution <= maxgrowthdil -1, "growth"] = 1
+        #print("In fill_drop -- 1.5: ", df)
+
+        growthfilled = df.pivot(index="group_rep",columns="dilution", values="growth")
+        #print("In fill_drop -- 2: ", growthfilled)
+        mle_postfill, lci ,uci , var = quantifyInputFromSerialDilution(growthfilled, foldDilution=10.15)
+        mle = mle_postfill
+    else:
+        mle_postfill, mle_prefill = mle, mle
+        growthfilled = pd.DataFrame(growth)
     if debug:
+        
         ax1, ax2, ax3 = axes
         ax1.set_title(f"CT")
         sns.heatmap(plate, vmin=thresholdCT-5,
@@ -336,7 +340,7 @@ def fill_dropouts_and_assess_viability(df, foldDilution, debug = False,
         ax3.set_title(f"Back-filled: Estimate = {round(mle_postfill)}")
         sns.heatmap(growthfilled, vmin=0,vmax=1,linewidth=1,linecolor="k",
                     cmap="gray",ax=ax3)
-    return(mle_postfill, lci, uci, var, df)
+    return(mle, lci, uci, var, df)
 
 def plot_scatter(df, ax):
     g = sns.scatterplot(data=df, x="dilution",y="CT", 
@@ -344,7 +348,7 @@ def plot_scatter(df, ax):
                         hue="is_valid_ct",hue_order=[True,False],
                         size="repid",#alpha=0.5,
                         palette="tab10",ax=ax)
-    g.set(ylim=[0,40],xlim=[0,8])    
+    g.set(ylim=[0,40])    
     g.legend(framealpha=0, fontsize=12)
 
 def prune_noisy_measurements(fulldf, growthcountdf, 
