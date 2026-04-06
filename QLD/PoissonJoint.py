@@ -54,6 +54,28 @@ def PoissonJointSecondDerivative(x, plate,fold):
     return(second)
 
 
+def shpm_error(L, plate, fold):
+    """
+    For each dilution plot the expected positive fraction (1-e^(-mle/fold^d))) vs observed positive fraction p
+    Returns the RMSE
+    """
+    Yexp = [(1- np.exp(-L/(np.power(fold, float(d-1))))) for d in plate.columns]
+    Yobs = [(plate[c].sum())/plate.shape[0] for c in plate.columns]
+    rmse = np.sqrt(np.mean([np.power(yexp - yobs, 2) for yexp, yobs  in zip(Yexp, Yobs)]))
+    return(rmse)
+
+def FisherInformation(mle, plate, fold):
+    """
+    Fisher information is given by
+    d_i ^ 2 exp(-mle*d_i)/(1-exp(-mle*d_i))
+    """
+    fi = 0
+    for dilution in plate.columns:
+        d = np.power(float(fold), -float(dilution-1))
+        fi_ = plate.shape[0]*(d**2) * (np.exp(-mle*d))/(1-np.exp(-mle*d))
+        fi = fi+ fi_
+    return(fi)
+
 def quantifyInputFromSerialDilution(serialDilutionTable, foldDilution=10, 
                                     initialGuess=1.0,
                                     maxCellRange=30000,visualize=False):
@@ -72,39 +94,43 @@ def quantifyInputFromSerialDilution(serialDilutionTable, foldDilution=10,
     quantifyInput maximizes the Joint Possion likelihood to estimate the number of targets that can produce
     the data above.
     """
-    for attempt in range(10):
-        sol = minimize(PoissonJoint,np.power(10, attempt), method="Nelder-Mead",args=(serialDilutionTable, foldDilution))
-        if sol.success:
-            break
-
+    growthTable = serialDilutionTable > 0
     lower = np.nan
     upper = np.nan
     variance = np.nan
     MLE = 0
-    if sol.success:
-        MLE = sol.x[0]
-        try:
-            variance = -1/PoissonJointSecondDerivative(MLE, serialDilutionTable, foldDilution)
-            
-        except:
-            variance = np.nan
-        lower, upper = MLE - 1.96*np.sqrt(variance), MLE + 1.96*np.sqrt(variance)
-        # lower, upper, area, ci_success = get_ci(sol.x[0], max(Y), X, Y, serialDilutionTable, 
-        #        total_area, fold=foldDilution, ax=ax)
-        ax= None
-        if visualize:
-            fig = plt.figure()
-            ax = fig.add_subplot(1,1,1)
-        if visualize:
-            ax.plot(X, Y)
-            ax.axvline(sol.x[0])
-            ax.set_xlabel("cell counts")
-            ax.set_ylabel("Prob")
-            if (not np.isnan(lower)) and ((not np.isnan(lower))):
-                ax.set_title(f"Estimate={round(sol.x[0])},95%CI=[{round(lower)}, {round(upper)}]")
-            plt.show()
 
+    ## First get an initial estimate using the full dilution table
+    for attempt in range(10):
+        sol = minimize(PoissonJoint,np.power(10, attempt), method="Nelder-Mead",
+                       args=(growthTable, foldDilution))
+        if sol.success:
+            break
+
+    if not sol.success:
+        return(MLE, lower, upper, variance)
+    
+    guess = sol.x[0]
+    ## Use this estimate to fit to using the SHPM 
+    sol = minimize(shpm_error, guess, args=(growthTable, foldDilution), 
+                  method="Nelder-Mead")
+    MLE = sol.x[0]
+    variance = 1/FisherInformation(MLE, growthTable, foldDilution)
+    lower, upper = MLE - 1.96*np.sqrt(variance), MLE + 1.96*np.sqrt(variance)
+    ax= None
+    if visualize:
+        fig = plt.figure()
+        ax = fig.add_subplot(1,1,1)
+    if visualize:
+        ax.plot(X, Y)
+        ax.axvline(sol.x[0])
+        ax.set_xlabel("cell counts")
+        ax.set_ylabel("Prob")
+        if (not np.isnan(lower)) and ((not np.isnan(lower))):
+            ax.set_title(f"Estimate={round(sol.x[0])},95%CI=[{round(lower)}, {round(upper)}]")
+        plt.show()
     return(MLE, lower, upper, variance)
+
 
 def get_ci_numerical(xmax, pmax, X, Y, plate, total_area, fold, maxiter=1000,ax=None):
     """
