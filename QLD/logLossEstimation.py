@@ -4,7 +4,7 @@ Date: 2025-08-24
 Commentary:
 Preprocesses qPCR data over dilutions to assess viability.
 """
-from QLD import quantifyInputFromSerialDilution, PoissonJoint
+from QLD import quantifyInputFromSerialDilution
 import os
 import matplotlib.pyplot as plt
 from scipy.stats import norm
@@ -247,7 +247,6 @@ def fill_dropouts_and_assess_viability(df, foldDilution, debug = False,
     thresholdCT = df[df.is_valid_ct].CT.median() 
     df = df.assign(growth = 0.)
     df.loc[df.is_valid_ct, "growth"] = 1.
-    print(df.Virus.unique())
     ### HAndle initial viability experiments here.
     df = df[df.dilution > 0 ]
 
@@ -279,9 +278,16 @@ def fill_dropouts_and_assess_viability(df, foldDilution, debug = False,
         sumgrowth += row.sum()
     if sumgrowth == 0 : 
         return(0,0,0,0,df)
-    mle, lci ,uci , var = quantifyInputFromSerialDilution(growth, foldDilution=foldDilution)
+    try:
+        mle, lci ,uci , var = quantifyInputFromSerialDilution(growth, foldDilution=foldDilution)
+    except:
+        return(0,0,0,0,df)
+
     if backfill:
-        mle_prefill, lci ,uci , var = quantifyInputFromSerialDilution(growth, foldDilution=foldDilution)
+        try:
+            mle_prefill, lci ,uci , var = quantifyInputFromSerialDilution(growth, foldDilution=foldDilution)
+        except:
+            return(0,0,0,0,df)
 
         ## Clean false positives: any singleton growth in a group with two preceding dilutions with no growth is a false positive
         ## TODO
@@ -320,8 +326,13 @@ def fill_dropouts_and_assess_viability(df, foldDilution, debug = False,
 
         growthfilled = df.pivot(index="group_rep",columns="dilution", values="growth")
         #print("In fill_drop -- 2: ", growthfilled)
-        mle_postfill, lci ,uci , var = quantifyInputFromSerialDilution(growthfilled, foldDilution=10.15)
-        mle = mle_postfill
+        try:
+            mle_postfill, lci ,uci , var = quantifyInputFromSerialDilution(growthfilled, foldDilution=10.15)
+            mle = mle_postfill
+        except:
+            mle = 0
+            mle_postfill = 0
+
     else:
         mle_postfill, mle_prefill = mle, mle
         growthfilled = pd.DataFrame(growth)
@@ -499,7 +510,13 @@ def has_growth(df, lower_ct_cutoff : float = 10., upper_ct_cutoff = 40):
         print("ERROR: has_growth()")
         print(df)
         raise
-    mle, lci ,uci , var = quantifyInputFromSerialDilution(plate, foldDilution=10.15)
+    try:
+        mle, lci ,uci , var = quantifyInputFromSerialDilution(plate, foldDilution=10.15)
+    except:
+        mle = 0
+        lci = np.nan
+        uci = np.nan
+        var = np.nan
 
     for dilution in sorted(df.dilution.unique()):
         """
