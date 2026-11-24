@@ -8,6 +8,7 @@ from scipy.optimize import minimize, Bounds
 from itertools import product
 import numpy as np
 from math import factorial
+from collections import namedtuple
 #import matplotlib.pyplot as plt 
 from numpy.random import binomial
 import pandas as pd
@@ -92,9 +93,9 @@ def dilutionmodel_ml(L, growth, fold, discardFinal=False):
                 term_c = -np.inf
             else:
                 if lambd <= np.log(2):
-                    term_c = numpos*np.log(-np.expm1(-lambd))
+                    term_c = numposlast*np.log(-np.expm1(-lambd))
                 else:
-                    term_c = numpos*np.log1p((-np.exp(- lambd)))
+                    term_c = numposlast*np.log1p((-np.exp(- lambd)))
             nll += -(term_a \
                      - term_b\
                      + term_c)
@@ -180,25 +181,51 @@ def quantifyInputFromSerialDilution(serialDilutionTable, foldDilution,
     backFill: This copies and error corrects the input growth table. A major assumption with this is the premise of a limiting dilution assay is not violated, namely SHPM still holds. Default=True.
     discardFinal: boolean, indicating if the final well retained the volume transferred into it, or if it was
     mixed in and discarded. Default = False. 
+    Returns:
+    NamedTuple QLDOut with fields
+    1. MLE
+    2. LCI
+    3. UCI
+    4. Std Dev
+    5. Success status
+    6. Interval Type
     """
+    ## Define the return type
+    QLDOut = namedtuple("QLD", ["mle","lci","uci","stddev", "success","intervaltype"])
+
     growthTable = serialDilutionTable > 0
     ## Initialize return values
     lower = np.nan
     upper = np.nan
     variance = np.nan
     MLE = 0
+    success = False
+    interval = ""
+    qldout = QLDOut(mle = MLE, 
+                    lci = lower, 
+                    uci = upper, 
+                    stddev = np.sqrt(variance), 
+                    success = success,
+                    intervaltype =  interval)
 
     ### Trivial cases:
     ### Check if growth table is completely empty:
     if sum(growthTable.values.flatten()) == 0:
-        return(MLE, lower, upper, variance)
+        return(qldout)
     ### Check if growth table is completely filled:
     if sum(growthTable.values.flatten()) == growthTable.shape[0]*growthTable.shape[1]:
         """
         See logic for estimating lower bound based on number of replicates  below.
         """
         lowerBound = np.log(growthTable.shape[0])*np.power(foldDilution, growthTable.shape[1]-1)
-        return(lowerBound, lower, upper, variance)
+        qldout = QLDOut(mle = lowerBound, 
+                        lci = lowerBound, 
+                        uci = np.nan, 
+                        stddev = np.nan, 
+                        success = False,
+                        intervaltype =  "lower bound")
+
+        return(qldout)
         
     if backFill:
         """
@@ -309,7 +336,13 @@ def quantifyInputFromSerialDilution(serialDilutionTable, foldDilution,
         if sol.success:
             break
     if not sol.success:
-        return(MLE, lower, upper, variance)
+        qldout = QLDOut(mle = MLE, 
+                        lci = lower, 
+                        uci = upper, 
+                        stddev = np.sqrt(variance), 
+                        success = sol.success,
+                        intervaltype =  interval_type)
+        return(qldout)
 
     ## Optimization successful
     MLE = sol.x[0]
@@ -370,7 +403,16 @@ def quantifyInputFromSerialDilution(serialDilutionTable, foldDilution,
         if (not np.isnan(lower)) and ((not np.isnan(upper))):
             ax.set_title(f"Estimate={round(sol.x[0])},95%CI=[{round(lower)}, {round(upper)}]")
         plt.show()
-    return(MLE, lower, upper, variance, {"interval_type":interval_type,})
+
+
+    qldout = QLDOut(mle = MLE, 
+                    lci = lower, 
+                    uci = upper, 
+                    stddev = np.sqrt(variance), 
+                    success = True,
+                    intervaltype =  interval_type)
+    return(qldout)
+
 
 # def get_ci_numerical(xmax, pmax, X, Y, plate, total_area, fold, maxiter=1000,ax=None):
 #     """
